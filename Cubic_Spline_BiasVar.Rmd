@@ -1,0 +1,193 @@
+---
+title: "ISEN 619 Cubic Spline Variance Bias Trade-off"
+output: html_notebook
+---
+
+```{r}
+#specify the seed so that the result can be reproduced
+set.seed(1)
+
+#maximum degree of freedom to be tested 
+n_df <- 60
+#number of sample
+n_sample <- 500
+```
+
+
+```{r}
+#Set up simulation data
+x <- sort(runif(n_sample,1,10))
+ytrue <- (sin(pi*x/5) + 0.2*cos(4*pi*x/5))
+y <- ytrue + rnorm(length(ytrue), sd=0.1)
+plot(x,y)
+lines(x,ytrue,col='blue',lwd=2)
+```
+
+
+```{r}
+#split data into training and testing sets
+simul_data <- data.frame(x,y,ytrue)
+training_index <- sample(1:n_sample,n_sample*0.8,replace=F)
+train <- simul_data[training_index,]
+test <- simul_data[-training_index,]
+plot(simul_data$x,simul_data$y)
+lines(simul_data$x,ytrue,col='red',lwd=2)
+```
+
+```{r}
+#K-fold cross validation with k=10
+library(splines)
+
+#specify number of folds
+set.seed(123)
+n_folds <- 10
+folds = sample((1:nrow(train) %% n_folds))+1
+
+#set up matrix to store the results
+prediction_matrix <- matrix(NA, nrow = n_folds, ncol = nrow(train)/n_folds)
+results <- matrix(NA, nrow = 3, ncol = n_df)
+mse <- matrix(NA, nrow = n_folds, ncol = n_df)
+```
+
+
+```{r}
+#use for loop to fit the model for 10 different combination of train-test subsets
+for (df_iter in 3:n_df){
+  
+  for (k in seq(n_folds)){
+    cspline <- glm(y ~ bs( x, df=df_iter), data=train[folds!=k,] )
+    
+    cspline_predict <- predict(cspline, newdata=as.data.frame(train[folds==k,]))
+    
+    prediction_matrix[k,1:(nrow(train)/n_folds)] <- cspline_predict 
+    
+    var_matrix <- apply(prediction_matrix, 2, FUN = var)
+    bias_matrix <- apply(prediction_matrix, 2, FUN = mean)
+    
+    squared_bias <- (bias_matrix - train[folds==k,3])^2
+    
+    mse[k, df_iter] <- mean((cspline_predict - train[folds==k,3])^2)
+  
+    }
+  results[1, df_iter] <- mean(var_matrix)
+  results[2, df_iter] <- mean(squared_bias)
+  
+}
+results[3,1:n_df] <- apply(mse, 2, FUN = mean)
+```
+
+```{r}
+par(mfrow=c(1,2))
+plot(results[1,], xlab = "Degrees of Freedom", ylab = "Variance")
+lines(1:60,results[1,],col='red')
+plot(results[2,], xlab = "Degrees of Freedom", ylab = "Squared-Bias")
+lines(1:60,results[2,],col='red')
+```
+
+```{r}
+par(mfrow=c(1,1))
+plot(results[3,], type='l', xlab = "Degrees of Freedom", ylab = "MSE", ylim=c(0,0.6))
+lines(1:60,results[1,],col='red')
+lines(1:60,results[2,],col='blue')
+legend("topright", c("MSE", "Variance", "Bias^2"), 
+  lty=1, col=c("black","red","blue"))
+```
+
+```{r}
+plot(results[3,], type='l', xlab = "Degrees of Freedom", ylab = "MSE")
+best.df.kfold = which.min(results[3,])
+best.df.kfold
+```
+
+```{r}
+#LOOCV
+
+#specify number of folds
+set.seed(123)
+n_folds <- nrow(train)
+folds = sample((1:nrow(train) %% n_folds))+1
+
+#set up matrix to store the results
+prediction_matrix <- matrix(NA, nrow = n_folds, ncol = nrow(train)/n_folds)
+results <- matrix(NA, nrow = 3, ncol = n_df)
+mse <- matrix(NA, nrow = n_folds, ncol = n_df)
+```
+
+```{r}
+#use for loop to fit the model with LOOCV method
+for (df_iter in 3:n_df){
+  
+  for (k in seq(n_folds)){
+    cspline <- glm(y ~ bs( x, df=df_iter), data=train[folds!=k,] )
+    
+    cspline_predict <- predict(cspline, newdata=as.data.frame(train[folds==k,]))
+    
+    prediction_matrix[k,1:(nrow(train)/n_folds)] <- cspline_predict 
+    
+    var_matrix <- apply(prediction_matrix, 2, FUN = var)
+    bias_matrix <- apply(prediction_matrix, 2, FUN = mean)
+    
+    squared_bias <- (bias_matrix - train[folds==k,3])^2
+    
+    mse[k, df_iter] <- mean((cspline_predict - train[folds==k,3])^2)
+  
+    }
+  results[1, df_iter] <- mean(var_matrix)
+  results[2, df_iter] <- mean(squared_bias)
+  
+}
+results[3,1:n_df] <- apply(mse, 2, FUN = mean)
+```
+
+
+```{r}
+par(mfrow=c(1,2))
+plot(results[1,], xlab = "Degrees of Freedom", ylab = "Variance")
+lines(1:60,results[1,],col='red')
+plot(results[2,], xlab = "Degrees of Freedom", ylab = "Squared-Bias")
+lines(1:60,results[2,],col='red')
+```
+
+```{r}
+par(mfrow=c(1,1))
+plot(results[3,], type='l', xlab = "Degrees of Freedom", ylab = "MSE", ylim=c(0,0.7))
+lines(1:60,results[1,],col='red')
+lines(1:60,results[2,],col='blue')
+legend("topright", c("MSE", "Variance", "Bias^2"), 
+  lty=1, col=c("black","red","blue"))
+```
+
+```{r}
+plot(results[3,], type='l', xlab = "Degrees of Freedom", ylab = "MSE")
+best.df.LOOCV = which.min(results[3,])
+best.df.LOOCV
+```
+```{r}
+#Compare CV and LOOCV
+model_kfold <- glm(y ~ bs( x, df=best.df.kfold), data=train)
+summary(model_kfold)
+predict_kfold <- predict(model_kfold, newdata=as.data.frame(test))
+
+test.RSS.kfold <- sum((predict_kfold - test$y)^2)
+test.TSS.kfold <- sum((mean(test$y) - test$y)^2)
+test.R.Squared.kfold<- 1-test.RSS.kfold/test.TSS.kfold
+test.R.Squared.kfold
+
+model_LOOCV <- glm(y ~ bs( x, df=best.df.LOOCV), data=train)
+summary(model_LOOCV)
+predict_LOOCV <- predict(model_LOOCV, newdata=as.data.frame(test))
+
+test.RSS.LOOCV <- sum((predict_LOOCV - test$y)^2)
+test.TSS.LOOCV <- sum((mean(test$y) - test$y)^2)
+test.R.Squared.LOOCV<- 1-test.RSS.LOOCV/test.TSS.LOOCV
+test.R.Squared.LOOCV
+```
+
+```{r}
+plot(test$x,test$y)
+lines(test$x,predict_kfold,col="red")
+lines(test$x,predict_LOOCV,col="blue")
+legend("topright", c("True", "kfold_model", "LOOCV_model"), pch = 1,
+  lty=1, col=c("black","red","blue"))
+```
+
